@@ -30,6 +30,16 @@ class MCPClient:
         # 6. Call `self.session.initialize()`, and print its result (to check capabilities of MCP server later)
         # 7. return self
 
+        parameters = StdioServerParameters(command="podman", args=["run", "--rm", "-i", self.docker_image])
+
+        self._stdio_context = stdio_client(parameters)
+
+        read_stream, write_stream = await self._stdio_context.__aenter__()
+
+        self._session_context = ClientSession(read_stream=read_stream, write_stream=write_stream)
+
+        self.session = await self._session_context.__aenter__()
+
         print("Initializing MCP session...")
         init_result = await self.session.initialize()
         print(f"Capabilities: {init_result.model_dump_json(indent=2)}")
@@ -41,7 +51,10 @@ class MCPClient:
         # This is shutdown method.
         # If session is present and session context is present as well then shutdown the session context (__aexit__ method with params)
         # If stdio context is present then shutdown the stdio context (__aexit__ method with params)
-        raise NotImplementedError()
+        if self.session and self._session_context:
+            await self._session_context.__aexit__(exc_type, exc_val, exc_tb)
+        if self._stdio_context :
+            await self._stdio_context.__aexit__(exc_type, exc_val, exc_tb)
 
     async def get_tools(self) -> list[dict[str, Any]]:
         """Get available tools from MCP server"""
@@ -62,7 +75,19 @@ class MCPClient:
         #             }
         #             for tool in tools.tools
         #         ]
-        raise NotImplementedError()
+        tools = await self.session.list_tools()
+
+        return [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.inputSchema
+                        }
+                    }
+                    for tool in tools.tools
+                ]
 
     async def call_tool(self, tool_name: str, tool_args: dict[str, Any]) -> Any:
         """Call a specific tool on the MCP server"""
@@ -76,7 +101,12 @@ class MCPClient:
         # 3. print(f"    ⚙️: {content}\n")
         # 4. If `isinstance(content, TextContent)` -> return content.text
         #    else -> return content
-        raise NotImplementedError()
+        tool_result: CallToolResult = await self.session.call_tool(tool_name, tool_args)
+        content = tool_result.content[0]
+        print(f"    ⚙️: {content}\n")
+        if isinstance(content, TextContent):
+            return content.text
+        return content
 
     async def get_resources(self) -> list[Resource]:
         """Get available resources from MCP server"""
@@ -85,7 +115,12 @@ class MCPClient:
         #TODO:
         # Wrap into try/except (not all MCP servers have resources), get `list_resources` (it is async) and resources
         # from it. In case of error print error and return an empty array
-        raise NotImplementedError()
+        try:
+            result = await self.session.list_resources()
+            return result.resources
+        except Exception as e:
+            print(f"Server doesn't support list_resources: {e}")
+            return []
 
     async def get_prompts(self) -> list[Prompt]:
         """Get available prompts from MCP server"""
@@ -95,4 +130,9 @@ class MCPClient:
         #TODO:
         # Wrap into try/except (not all MCP servers have prompts), get `list_prompts` (it is async) and prompts
         # from it. In case of error print error and return an empty array
-        raise NotImplementedError()
+        try:
+            result = await self.session.list_prompts()
+            return result.prompts
+        except Exception as e:
+            print(f"Server doesn't support list_resources: {e}")
+            return []
