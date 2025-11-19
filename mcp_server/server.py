@@ -2,19 +2,27 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from models.user_info import UserSearchRequest, UserCreate, UserUpdate
+from mcp_server.models.user_info import UserSearchRequest, UserCreate, UserUpdate
 from user_client import UserClient
 
-#TODO:
+# TODO:
 # 1. Create instance of FastMCP as `mcp` (or another name if you wish) with:
 #       - name is "users-management-mcp-server",
 #       - host is "0.0.0.0",
 #       - port is 8005,
 # 2. Create UserClient
 
+mcp = FastMCP(
+    name="user-manager-mcp-server",
+    host="0.0.0.0",
+    port=8005
+)
+
+user_client = UserClient()
+
 
 # ==================== TOOLS ====================
-#TODO:
+# TODO:
 # You need to add all the tools here. You will need to create 5 async methods and mark them as @mcp.tool() (if you
 # named FastMCP not as `mcp` then use the name that you have used). All tools return `str`.
 # Don't forget about tool description, it will LLM to identify when some particular tool should be used.
@@ -22,14 +30,36 @@ from user_client import UserClient
 # ---
 # Tools:
 # 1. `get_user_by_id`:-
+
+@mcp.tool()
+async def get_user_by_id(user_id: int) -> str:
+    """Provides full user information by user_id"""
+    return await user_client.get_user(user_id)
 # 2. `delete_user`:-
+@mcp.tool()
+async def delete_user_by_id(user_id: int) -> str:
+    """Deletes user by user_id"""
+    return await user_client.delete_user(user_id)
+
 # 3. `search_user`:-
+@mcp.tool()
+async def search_user(user_search_request: UserSearchRequest) -> str:
+    """Searches user by name,surname,email, gender"""
+    return await user_client.search_users(**user_search_request.model_dump())
 # 4. `add_user`:-
+@mcp.tool()
+async def add_user(add_user_request: UserCreate) -> str:
+    """Create user by params"""
+    return await user_client.add_user(**add_user_request.model_dump())
 # 5. `update_user`:-
+@mcp.tool()
+async def updates_user(update_user_request: UserUpdate) -> str:
+    """Create user by params"""
+    return await user_client.update_user(**update_user_request.model_dump())
 
 # ==================== MCP RESOURCES ====================
 
-#TODO:
+# TODO:
 # Provides screenshot with Swagger endpoints of User Service. We need for the case to show you that MCP servers can
 # provide some static resources.
 # https://gofastmcp.com/servers/resources
@@ -40,17 +70,32 @@ from user_client import UserClient
 # 2. You need to get `flow.png` picture from `mcp_server` folder and return it as bytes.
 # 3. Don't forget to provide resource description
 
+@mcp.resource("users-management://flow-diagram", mime_type="image/png")
+async def get_flow_diagram() -> bytes:
+    """The Users Management Service flow diagram as PNG image"""
+
+    image_path = Path(__file__).parent / "flow.png"
+
+    if not image_path.exists():
+        raise FileNotFoundError("flow.png not found")
+
+    with open(image_path, "rb") as f:
+        return f.read()
+
 
 # ==================== MCP PROMPTS ====================
 
-#TODO:
+# TODO:
 # Provides static prompts that can be used by Clients
 # https://gofastmcp.com/servers/prompts
 # ---
 # Prompts are prepared, you need just properly return them and provide descriptions of them"
 
 # Helps users formulate effective search queries
-"""
+@mcp.prompt()
+async def user_search_assistant_prompt() -> str:
+    """Helps users formulate effective search queries"""
+    return """
 You are helping users search through a dynamic user database. The database contains 
 realistic synthetic user profiles with the following searchable fields:
 
@@ -100,9 +145,11 @@ When helping users search, suggest multiple search strategies and explain
 why certain approaches might be more effective for their goals.
 """
 
-
 # Guides creation of realistic user profiles
-"""
+@mcp.prompt()
+async def add_user_assistant_prompt() -> str:
+    """Helps users create realistic user profiles """
+    return """
 You are helping create realistic user profiles for the system. Follow these guidelines 
 to ensure data consistency and realism.
 
@@ -173,8 +220,9 @@ When creating profiles, aim for diversity in:
 - Cultural backgrounds
 """
 
-
 if __name__ == "__main__":
-    #TODO:
+    # TODO:
     # Run server with `transport="streamable-http"`
-    raise NotImplementedError()
+    mcp.run(
+        transport="streamable-http"
+    )
